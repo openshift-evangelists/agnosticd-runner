@@ -33,7 +33,7 @@ VOLUME /opt/app-root/src/.ssh
 WORKDIR /opt/app-root/src
 
 ENTRYPOINT ["/opt/app-root/bin/agnosticd-runner"]
-CMD ["create"]
+CMD ["help"]
 
 
 

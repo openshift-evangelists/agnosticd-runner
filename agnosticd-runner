@@ -1,6 +1,6 @@
 #!/bin/bash
 
-DOC="https://github.com/openshift-evangelists/oc-cluster-wrapper/blob/master/README.adoc"
+DOC="https://github.com/openshift-evangelists/agnosticd-runner/blob/master/readme.md"
 SCRIPT_NAME=$(basename "$0")
 
 # Handle source locations that might be a symlink (ref: http://bit.ly/2kcvSCS)
@@ -83,19 +83,10 @@ function create {
 }
 
 function create.help {
-  echo "Starts/Creates a cluster with the given profile name (or default)"
-  echo "in case no profile is specified"
+  echo "Starts/Creates a cluster with the given configuration"
   echo ""
   echo "Usage:"
-  echo " $SCRIPT_NAME create [<profile>] [<args>]"
-  echo ""
-  echo "Available Environement variables:"
-  echo ""
-  echo "OC_CLUSTER_PUBLIC_HOSTNAME (defaults to 127.0.0.1)"
-  echo ""
-  echo "Available Arguments:"
-  echo ""
-  echo "-e, --env=[]: Specify a key-value pair for an environment variable to set on OpenShift container"
+  echo " $SCRIPT_NAME create"
   echo ""
   echo "See the documentation at $DOC"
 }
@@ -187,16 +178,7 @@ function destroy {
 }
 
 function destroy.help {
-  echo "Destroys the specified cluster, or the current active cluster"
-  echo "if none is specified. Use -c/--confirm to skip confirmation prompt"
-  echo ""
-  echo "All the information store for the profile will be removed"
-  echo "- This information is stored in $OPENSHIFT_PROFILES_DIR/<PROFILE>"
-  echo "- Also the profile will be cleared from the .kubeconfig file"
-  echo "- All the images created by this cluster will be removed"
-  echo ""
-  echo "Usage:"
-  echo " $SCRIPT_NAME destroy [-c || --confirm] [<PROFILE>]"
+  echo "Destroys the specified cluster"
   echo ""
   echo "See the documentation at $DOC"
 }
@@ -224,10 +206,9 @@ function help {
   echo ""
   echo "Available Commands:"
   echo ""
-  echo "  oc-cluster create [profile] [OPTIONS]"
-  echo "  oc-cluster destroy [profile]"
-  echo "  oc-cluster list"
-  echo ""
+  echo "  $SCRIPT_NAME create"
+  echo "  $SCRIPT_NAME destroy"
+#  echo "  $SCRIPT_NAME list"
   echo ""
   echo "See the documentation at $DOC"
 }
@@ -252,9 +233,9 @@ then
         shift # past argument
         destroy "$@"
         ;;
-      list)
-        list
-        ;;
+#       list)
+#        list
+#        ;;
       -h|--help)
         help
         ;;
