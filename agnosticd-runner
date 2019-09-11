@@ -1,0 +1,268 @@
+#!/bin/bash
+
+DOC="https://github.com/openshift-evangelists/oc-cluster-wrapper/blob/master/README.adoc"
+SCRIPT_NAME=$(basename "$0")
+
+# Handle source locations that might be a symlink (ref: http://bit.ly/2kcvSCS)
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+  DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+done
+DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+
+AGNOSTICD_REPO=${AGNOSTICD_REPO:-https://github.com/redhat-cop/agnosticd}
+AGNOSTICD_DIR=${AGNOSTICD_DIR:-/tmp/agnosticd}
+CONFIG_DIR="${CONFIG_DIR:-${DIR}/config}"
+
+function message {
+  echo "#############"
+  for arg in "$@"
+  do
+    echo "### $arg"
+  done
+  echo "#############"
+}
+
+function error {
+  echo "============="
+  for arg in "$@"
+  do
+    echo "=== $arg"
+  done
+  echo "============="
+  exit 1
+}
+
+function checkout-agnosticd {
+  git clone ${AGNOSTICD_REPO} ${AGNOSTICD_DIR}
+  git checkout development
+}
+
+function update-agnosticd {
+  pushd ${AGNOSTICD_DIR} &> /dev/null
+  git fetch
+  git checkout development
+  popd &> /dev/null
+}
+
+function get-agnosticd {
+  # If repo exist locally, update, else, checkout
+  if [ -d ${AGNOSTICD_DIR} ]
+  then
+    update-agnosticd
+  else
+    checkout-agnosticd
+  fi
+}
+
+function create {
+  [ "$1" == "-h" ] || [ "$1" == "--help" ] && ${FUNCNAME[0]}.help && return 0
+
+  echo "Create"
+  message "Get the agnosticd repository"
+  get-agnosticd
+  message "done"
+
+  if [ ! -e ${CONFIG_DIR}/my_environment-variables.yml ]
+  then
+    error "${CONFIG_DIR}/my_environment-variables.yml does not exist. Create this file manually or use \"$SCRIPT_NAME create-env\" and edit it manually"
+  fi
+
+  if [ ! -e ${CONFIG_DIR}/my_secret.yml ]
+  then
+    error "${CONFIG_DIR}/my_secret.yml does not exist. Create this file manually or use \"$SCRIPT_NAME create-secret\" and edit it manually"
+  fi
+
+  pushd ${AGNOSTICD_DIR} &> /dev/null
+  ansible-playbook ansible/main.yml \
+    -e @${CONFIG_DIR}/my_environment-variables.yml \
+    -e @${CONFIG_DIR}/my_secret.yml
+  popd &> /dev/null
+}
+
+function create.help {
+  echo "Starts/Creates a cluster with the given profile name (or default)"
+  echo "in case no profile is specified"
+  echo ""
+  echo "Usage:"
+  echo " $SCRIPT_NAME create [<profile>] [<args>]"
+  echo ""
+  echo "Available Environement variables:"
+  echo ""
+  echo "OC_CLUSTER_PUBLIC_HOSTNAME (defaults to 127.0.0.1)"
+  echo ""
+  echo "Available Arguments:"
+  echo ""
+  echo "-e, --env=[]: Specify a key-value pair for an environment variable to set on OpenShift container"
+  echo ""
+  echo "See the documentation at $DOC"
+}
+
+function create-env {
+  [ "$1" == "-h" ] || [ "$1" == "--help" ] && ${FUNCNAME[0]}.help && return 0
+
+   cat <<-EOF > ${CONFIG_DIR}/my_environment-variables.yml
+---
+env_type: ocp4-workshop
+guid: myguid
+cloud_provider: ec2
+cloud_tags: {'Purpose': 'development'}
+aws_region: us-east-2
+cloudformation_retries: 0
+key_name: ocpkey
+software_to_deploy: none
+install_ipa_client: false
+osrelease: '4.1'
+repo_version: '4.1.0'
+own_repo_path: http://d3s3zqyaz8cp2d.cloudfront.net/repos/ocp/{{ repo_version }}
+email: jmaltin@redhat.com
+install_ocp4: yes
+default_workloads: []
+install_idm: htpasswd
+install_student_user: true
+admin_user: admin
+admin_password: sudomakemeasandwich
+student_sudo: false
+student_name: lab-user
+student_password: 'r3dh4t1!'
+student_key: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC3Avw03Dmh1R2QWQ4CV7JgEsXnHQjNhfppD5aZmh0q/64p6lW+2oNKTT7fVQcrsdmlJwrMd5apkUGrOcq0hHXQMEVZEKUmEjko2BqD5A9/zNX7apObW88bFFfgxc91lOT+e+wfCFsrr3b2SJ3+KL6nTBJV7Lf46i6z86vhiDPjqL7U9kTS+bK9ldU20vpn8h+ZAIaiafVWfjihUjhNpcUY46klixV1YcAkBGCbE+YR6RAAc6vWy0zB3YJnTUl9OFt213ofi1qjuWKVMmOxORxPKB4/JQ+hfAsCMysoVFnFYs10dWxaySK63OgY9uLNyaIwkEaVVIfcViRVm0DZfoNH
+subdomain_base_suffix: .openshift.opentlc.com
+HostedZoneId: Z186MFNM7DX4NF
+worker_instance_type: m4.xlarge
+worker_instance_count: 1
+ocp4_token: >-
+  Your OCP token from try.openshift.com
+EOF
+  message "${CONFIG_DIR}/my_environment-variables.yml has been created. Tune it at your will"
+}
+
+function create-env.help {
+  echo "Creates a file with the default environment configuration. Tweak it to match your own needs."
+  echo ""
+  echo "See the documentation at $DOC"
+}
+
+function create-secret {
+  [ "$1" == "-h" ] || [ "$1" == "--help" ] && ${FUNCNAME[0]}.help && return 0
+
+  message "Get your AWS credentials as documented here: https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html" \
+          "Create this file: ${CONFIG_DIR}/my_secret.yml" \
+          "with the following values: " \
+          "   aws_access_key_id: XXXXXXX" \
+          "   aws_access_access_key: XXXXXXX"
+}
+
+function create-secret.help {
+  echo "Creates a file with your AWS credentials as secret"
+  echo ""
+  echo "See the documentation at $DOC"
+}
+
+function destroy {
+  [ "$1" == "-h" ] || [ "$1" == "--help" ] && ${FUNCNAME[0]}.help && return 0
+#  [ "$1" == "-c" ] || [ "$1" == "--confirm" ] && CONFIRM=true && shift
+
+  echo "Destroy"
+  message "Get the agnosticd repository"
+  get-agnosticd
+  message "done"
+
+  if [ ! -e ${CONFIG_DIR}/my_environment-variables.yml ]
+  then
+    error "${CONFIG_DIR}/my_environment-variables.yml does not exist. Create this file manually or use \"$SCRIPT_NAME create-env\" and edit it manually"
+  fi
+
+  if [ ! -e ${CONFIG_DIR}/my_secret.yml ]
+  then
+    error "${CONFIG_DIR}/my_secret.yml does not exist. Create this file manually or use \"$SCRIPT_NAME create-secret\" and edit it manually"
+  fi
+
+  pushd ${AGNOSTICD_DIR} &> /dev/null
+  ansible-playbook ansible/destroy.yml \
+    -e @${CONFIG_DIR}/my_environment-variables.yml \
+    -e @${CONFIG_DIR}/my_secret.yml
+  popd &> /dev/null
+}
+
+function destroy.help {
+  echo "Destroys the specified cluster, or the current active cluster"
+  echo "if none is specified. Use -c/--confirm to skip confirmation prompt"
+  echo ""
+  echo "All the information store for the profile will be removed"
+  echo "- This information is stored in $OPENSHIFT_PROFILES_DIR/<PROFILE>"
+  echo "- Also the profile will be cleared from the .kubeconfig file"
+  echo "- All the images created by this cluster will be removed"
+  echo ""
+  echo "Usage:"
+  echo " $SCRIPT_NAME destroy [-c || --confirm] [<PROFILE>]"
+  echo ""
+  echo "See the documentation at $DOC"
+}
+
+function list {
+  [ "$1" == "-h" ] || [ "$1" == "--help" ] && ${FUNCNAME[0]}.help && return 0
+
+  echo "Profiles:"
+}
+
+function list.help {
+  echo "List all the available profiles"
+  echo ""
+  echo "Profiles are located in xxx"
+  echo ""
+  echo "Usage:"
+  echo " $SCRIPT_NAME list"
+  echo ""
+  echo "See the documentation at $DOC"
+}
+
+function help {
+  echo "Usage:"
+  echo " $SCRIPT_NAME -h"
+  echo ""
+  echo "Available Commands:"
+  echo ""
+  echo "  oc-cluster create [profile] [OPTIONS]"
+  echo "  oc-cluster destroy [profile]"
+  echo "  oc-cluster list"
+  echo ""
+  echo ""
+  echo "See the documentation at $DOC"
+}
+
+if [[ $# -gt 0 ]]
+then
+   key="$1"
+   case $key in
+      create)
+        shift # past argument
+        create "$@"
+        ;;
+      create-env)
+        shift # past argument
+        create-env "$@"
+        ;;
+      create-secret)
+        shift # past argument
+        create-secret "$@"
+        ;;
+      destroy)
+        shift # past argument
+        destroy "$@"
+        ;;
+      list)
+        list
+        ;;
+      -h|--help)
+        help
+        ;;
+      *)
+        shift # past argument
+        $key "$@"  2> /dev/null || echo "Command $key not found"
+        ;;
+   esac
+else
+   help
+fi
