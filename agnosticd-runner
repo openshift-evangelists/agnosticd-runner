@@ -15,6 +15,7 @@ DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
 AGNOSTICD_REPO=${AGNOSTICD_REPO:-https://github.com/redhat-cop/agnosticd}
 AGNOSTICD_DIR=${AGNOSTICD_DIR:-/tmp/agnosticd}
 CONFIG_DIR="${CONFIG_DIR:-${DIR}/config}"
+SSH_DIR="${SSH_DIR:-${HOME}/.ssh}"
 
 function message {
   echo "#############"
@@ -102,7 +103,7 @@ cloud_provider: ec2
 cloud_tags: {'Purpose': 'development'}
 aws_region: us-east-2
 cloudformation_retries: 0
-key_name: ocpkey
+key_name: agnosticd-runner
 software_to_deploy: none
 install_ipa_client: false
 osrelease: '4.1'
@@ -183,6 +184,63 @@ function destroy.help {
   echo "See the documentation at $DOC"
 }
 
+REGIONS="us-east-1 us-east-2 us-west-1 us-west-2 ap-east-1 ap-south-1 ap-northeast-2 ap-northeast-1 ap-southeast-1 ap-southeast-2 eu-central-1 eu-west-1 eu-west-2 eu-west-3 eu-north-1"
+
+#
+# Params: keyname, region
+#
+function push-key {
+  [ "$1" == "-h" ] || [ "$1" == "--help" ] && ${FUNCNAME[0]}.help && return 0
+#  [ "$1" == "-c" ] || [ "$1" == "--confirm" ] && CONFIRM=true && shift
+
+  local REGION=${1:-eu-west-1}
+  local KEYNAME=${2:-agnosticd-runner}
+
+  if [ ! -e "${SSH_DIR}/${KEYNAME}.pem" ]
+  then
+    openssl genrsa -out ${SSH_DIR}/${KEYNAME}.pem 2048 &> /dev/null
+    chmod 400 ${SSH_DIR}/${KEYNAME}.pem &> /dev/null
+  fi
+  if [ ! -e "${SSH_DIR}/${KEYNAME}.pub" ]
+  then
+    openssl rsa -in ${SSH_DIR}/${KEYNAME}.pem -pubout > ${SSH_DIR}/${KEYNAME}.pub
+    chmod 400 ${SSH_DIR}/${KEYNAME}.pub &> /dev/null
+  fi
+  if [ ! -e "${SSH_DIR}/config" ]
+  then
+    touch ${SSH_DIR}/config &> /dev/null
+    chmod 600 ${SSH_DIR}/config &> /dev/null
+  fi
+
+  if [[ "all" == "${REGION}" ]]
+  then
+    for _REGION in `echo ${REGIONS}`
+    do
+      echo "Pushing key to $_REGION"
+      aws ec2 import-key-pair --key-name ${KEYNAME} --region=$_REGION --output=text --public-key-material "`cat ${SSH_DIR}/${KEYNAME}.pub | grep -v PUBLIC`"
+    done
+  else
+    echo "Pushing key to $REGION"
+    aws ec2 import-key-pair --key-name ${KEYNAME} --region=$REGION --output=text --public-key-material "`cat ${SSH_DIR}/${KEYNAME}.pub | grep -v PUBLIC`"
+  fi
+  
+}
+
+function push-key.help {
+  echo "Push the provided ssh pub key to AWS region"
+  echo ""
+  echo "Usage:"
+  echo " $SCRIPT_NAME push-key <keyname> [<region>]"
+  echo ""
+  echo "Params:"
+  echo " <keyname>: The name of the key in the my_environment-variables to use. This is also the name of the .pem file in your ~/.ssh dir provided. Defaults to 'agnosticd-runner' "
+  echo " <region>: The name of the AWS region to push the key to. Defaults to 'eu-west-1'. Can use 'all' to push to all common regions ($REGIONS)."
+  echo ""
+  echo "See https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-regions-availability-zones.html for description of AWS regions"
+  echo ""
+  echo "See the documentation at $DOC"
+}
+
 function list {
   [ "$1" == "-h" ] || [ "$1" == "--help" ] && ${FUNCNAME[0]}.help && return 0
 
@@ -228,6 +286,10 @@ then
       create-secret)
         shift # past argument
         create-secret "$@"
+        ;;
+      push-key)
+        shift # past argument
+        push-key "$@"
         ;;
       destroy)
         shift # past argument

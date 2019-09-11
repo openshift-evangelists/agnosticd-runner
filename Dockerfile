@@ -26,6 +26,7 @@ RUN chmod +x /opt/app-root/bin/agnosticd-runner && \
 #    chmod -R g+w /runner && chgrp -R root /runner
 
 ENV CONFIG_DIR="/opt/app-root/data"
+ENV SSH_DIR="/opt/app-root/src/.ssh"
 
 VOLUME /opt/app-root/data
 VOLUME /opt/app-root/src/.ssh
